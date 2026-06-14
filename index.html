@@ -170,7 +170,7 @@ function press(e) {
   else if (state === ST_OVER) startGame();
 }
 canvas.addEventListener('pointerdown', press);
-window.addEventListener('keydown', (e) => { press(e); });
+window.addEventListener('keydown', (e) => { console.log('keydown', e.code, e.key, e.keyCode); press(e); });
 
 // ---- 업데이트 ----
 let last = performance.now();
