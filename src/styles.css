@@ -121,6 +121,37 @@ body {
   color: var(--muted); padding: 3px 8px; cursor: pointer; font-size: 15px; }
 .mylink-copy:hover { border-color: var(--gold); color: var(--gold); }
 
+/* 친구 찾기 버튼 (FriendBar 우측) */
+.ff-btn { background: transparent; border: 1px solid rgba(255,255,255,.2); border-radius: 50%;
+  width: 22px; height: 22px; color: var(--muted); font-size: 14px; cursor: pointer; line-height: 1;
+  display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.ff-btn:hover { border-color: var(--gold); color: var(--gold); }
+
+/* 친구 찾기 모달 */
+.find-friends-modal { background: rgba(15, 10, 34, 0.88); backdrop-filter: blur(6px); }
+.find-friends-card { max-width: 420px; width: 100%; padding: 0 !important; overflow: hidden; }
+.ff-header { display: flex; align-items: center; justify-content: space-between;
+  padding: 18px 20px 14px; border-bottom: 1px solid rgba(255,255,255,.08); }
+.ff-header h1 { margin: 0; font-size: 18px; color: var(--gold); }
+.ff-close { background: transparent; border: none; color: var(--muted); font-size: 18px; cursor: pointer; line-height: 1; }
+.ff-close:hover { color: var(--text); }
+.ff-search { width: 100%; background: rgba(0,0,0,.35); border: none; border-bottom: 1px solid rgba(255,255,255,.08);
+  color: var(--text); padding: 12px 20px; font-size: 14px; outline: none; }
+.ff-search::placeholder { color: var(--muted); }
+.ff-list { max-height: 380px; overflow-y: auto; padding: 8px 0; }
+.ff-empty { padding: 32px; text-align: center; color: var(--muted); font-size: 14px; }
+.ff-row { display: flex; align-items: center; justify-content: space-between;
+  padding: 10px 20px; gap: 12px; }
+.ff-row:hover { background: rgba(255,255,255,.04); }
+.ff-info { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.ff-name { font-weight: 700; font-size: 14px; }
+.ff-slug { font-size: 12px; color: var(--muted); }
+.ff-add { flex-shrink: 0; padding: 5px 12px; border-radius: 8px; border: 1px solid rgba(255,210,74,.5);
+  background: transparent; color: var(--gold); font-size: 13px; font-weight: 700; cursor: pointer; }
+.ff-add:hover:not(:disabled) { background: rgba(255,210,74,.15); }
+.ff-add.done { border-color: rgba(255,255,255,.2); color: var(--muted); cursor: default; }
+.ff-add:disabled { opacity: .6; cursor: default; }
+
 /* 친구 초대 모달 (게임 위에 뜨는 오버레이) */
 .invite-modal { background: rgba(15, 10, 34, 0.88); backdrop-filter: blur(6px); }
 

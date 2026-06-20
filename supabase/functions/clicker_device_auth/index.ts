@@ -28,7 +28,7 @@ Deno.serve(async (req) => {
     const { data: device, error: devErr } = await admin
       .from("clicker_devices")
       .select("id, owner_id, registered")
-      .eq("device_code", device_code)
+      .or(`device_code.eq.${device_code},slug.eq.${device_code}`)
       .maybeSingle();
     if (devErr) { console.error("[device_auth] DB error:", devErr.message); return json({ error: devErr.message }, 500); }
     console.log("[device_auth] device:", device);

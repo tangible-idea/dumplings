@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 
 // signal: { id, type:'click'|'poke', ts } — 새 객체가 올 때마다 해당 칩을 잠깐 반짝
-export default function FriendBar({ friends, signal }) {
+export default function FriendBar({ friends, signal, onFindFriends }) {
   const [flash, setFlash] = useState(null);
 
   useEffect(() => {
@@ -11,16 +11,11 @@ export default function FriendBar({ friends, signal }) {
     return () => clearTimeout(t);
   }, [signal]);
 
-  if (!friends.length) {
-    return (
-      <div className="friendbar">
-        <span style={{ color: 'var(--muted)', fontSize: 12 }}>아직 친구가 없어요 🥲</span>
-      </div>
-    );
-  }
-
   return (
     <div className="friendbar">
+      {friends.length === 0 && (
+        <span style={{ color: 'var(--muted)', fontSize: 12 }}>아직 친구가 없어요 🥲</span>
+      )}
       {friends.map((f) => {
         const on = flash && flash.id === f.id;
         const cls = 'fchip' + (on ? ' flash' : '') + (on && flash.type === 'poke' ? ' poke' : '');
@@ -30,6 +25,7 @@ export default function FriendBar({ friends, signal }) {
           </span>
         );
       })}
+      <button className="ff-btn" onClick={onFindFriends} title="친구 찾기">＋</button>
     </div>
   );
 }

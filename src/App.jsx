@@ -8,6 +8,7 @@ import Shop from './components/Shop';
 import FriendBar from './components/FriendBar';
 import Gate from './components/Gate';
 import InviteModal from './components/InviteModal';
+import FindFriendsModal from './components/FindFriendsModal';
 
 function Stars() {
   const stars = useMemo(
@@ -64,6 +65,7 @@ export default function App() {
   const [toastData, setToastData] = useState({ msg: '', ts: 0 });
 
   const [invite, setInvite] = useState(null);
+  const [findFriendsOpen, setFindFriendsOpen] = useState(false);
   const [slugInput, setSlugInput] = useState('');
   const [slugEditing, setSlugEditing] = useState(false);
   const [slugSaving, setSlugSaving] = useState(false);
@@ -251,7 +253,11 @@ export default function App() {
             <div className="progressText">Lv.{li.lvl + 1}까지 {fmt(li.need - li.cur)} 코인 ({pct.toFixed(1)}%)</div>
             <div className="coin"><span className="ic">🪙</span><span className="coins" ref={coinsRef}>{fmt(snap.coins)}</span></div>
             <div className="persec">초당 {fmt(snap.perSec)} 코인</div>
-            <FriendBar friends={auth.friends} signal={friendSignal} />
+            <FriendBar
+              friends={auth.friends}
+              signal={friendSignal}
+              onFindFriends={auth.ready ? () => setFindFriendsOpen(true) : undefined}
+            />
             <div className="mylink">
               {auth.ready && (
                 slugEditing ? (
@@ -284,6 +290,11 @@ export default function App() {
       </div>
 
       <InviteModal invite={invite} onClose={() => setInvite(null)} />
+      <FindFriendsModal
+        open={findFriendsOpen}
+        onClose={() => setFindFriendsOpen(false)}
+        onAdded={(user) => setAuth((a) => ({ ...a, friends: [...a.friends.filter((f) => f.id !== user.id), user] }))}
+      />
 
       {gate && (
         <Gate
