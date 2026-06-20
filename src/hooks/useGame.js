@@ -2,13 +2,14 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   clickPower, clickUpgradeCost, genCost, levelInfo, loadState, perSec, saveState,
 } from '../lib/game';
+import { deviceCode } from '../lib/supabase';
 
 // 게임 상태는 ref(권위본)에 두고 60fps 루프로 갱신, UI 표시는 100ms마다 스냅샷.
 export function useGame() {
   const sRef = useRef(null);
   const offlineRef = useRef(0);
   if (sRef.current === null) {
-    const { state, offlineReward } = loadState();
+    const { state, offlineReward } = loadState(deviceCode);
     sRef.current = state;
     offlineRef.current = offlineReward;
   }
@@ -49,8 +50,8 @@ export function useGame() {
     raf = requestAnimationFrame(tick);
 
     const ui = setInterval(() => setSnap(snapshot()), 100);
-    const sv = setInterval(() => saveState(sRef.current), 5000);
-    const onLeave = () => saveState(sRef.current);
+    const sv = setInterval(() => saveState(sRef.current, deviceCode), 5000);
+    const onLeave = () => saveState(sRef.current, deviceCode);
     window.addEventListener('beforeunload', onLeave);
 
     return () => {

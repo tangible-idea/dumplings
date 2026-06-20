@@ -1,5 +1,5 @@
 // ===== 게임 상수 / 순수 로직 =====
-export const SAVE_KEY = 'dumpling-clicker-v1';
+export const saveKey = (deviceCode) => `dumpling-clicker-v1:${deviceCode || 'local'}`;
 
 export const GENS = [
   { name: '만두 친구',   emoji: '🥟', desc: '데굴데굴 코인을 모아요',        base: 15,      prod: 0.1 },
@@ -44,11 +44,12 @@ export function levelInfo(S) {
 }
 
 // localStorage 불러오기 + 오프라인 보상 계산
-export function loadState() {
+export function loadState(deviceCode) {
+  const key = saveKey(deviceCode);
   const S = initialState();
   let offlineReward = 0;
   try {
-    const raw = localStorage.getItem(SAVE_KEY);
+    const raw = localStorage.getItem(key);
     if (raw) {
       const d = JSON.parse(raw);
       Object.assign(S, d);
@@ -61,7 +62,7 @@ export function loadState() {
   return { state: S, offlineReward };
 }
 
-export function saveState(S) {
+export function saveState(S, deviceCode) {
   S.lastSave = Date.now();
-  try { localStorage.setItem(SAVE_KEY, JSON.stringify(S)); } catch (e) { /* ignore */ }
+  try { localStorage.setItem(saveKey(deviceCode), JSON.stringify(S)); } catch (e) { /* ignore */ }
 }
