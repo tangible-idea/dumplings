@@ -39,7 +39,6 @@ export default function Gate({ gate, deviceCode, onGoogle, onStart, onRetry, onD
     body = (<>
       <div className="logo">🥟</div><h1>클리커 키우기</h1>
       <p>클리커 기기의 링크로 접속하면 친구와 연결돼요.<br />지금은 기기 코드가 없어요.</p>
-      <button className="gbtn ghost" onClick={onDemo}>데모로 둘러보기</button>
     </>);
   } else if (state === 'error') {
     body = (<>
