@@ -1,73 +1,72 @@
 import { useState } from 'react';
-import { GENS, clickUpgradeCost, fmt, genCost } from '../lib/game';
+import {
+  CATEGORIES, INGREDIENTS, fmt, ingredientBuyable, ingredientUnlocked,
+} from '../lib/game';
 
-const TABS = [
-  { id: 'friends', label: '동료들' },
-  { id: 'upgrade', label: '강화' },
-  { id: 'achieve', label: '업적' },
-  { id: 'rebirth', label: '환생' },
-  { id: 'room', label: '방' },
-  { id: 'summon', label: '소환' },
-];
+const BONUS_LABEL = {
+  expPct: (v) => `경험치 +${Math.round(v * 100)}%`,
+  sellGoldPct: (v) => `판매가 +${Math.round(v * 100)}%`,
+  steamTime: (v) => `찜 시간 −${v}초`,
+  gradeChance: (v, b) => `${b.minGrade}급↑ 확률 +${Math.round(v * 100)}%`,
+  legendChance: (v) => `전설 확률 +${Math.round(v * 100)}%`,
+  failDown: (v) => `하위등급 −${Math.round(v * 100)}%`,
+  clickPower: (v) => `클릭당 −${v}초 추가`,
+  extraAdjective: () => `형용사 +1`,
+  randomGold: (v) => `랜덤 골드 +최대${v}`,
+  eatBuff: () => `먹기 버프 강화`,
+};
 
-export default function Shop({ snap, buyGen, buyClickUpgrade }) {
-  const [tab, setTab] = useState('friends');
+function bonusText(b) {
+  const fn = BONUS_LABEL[b.type];
+  return fn ? fn(b.value, b) : '';
+}
+
+export default function Shop({ snap, buyIngredient }) {
+  const [tab, setTab] = useState(CATEGORIES[0].id);
 
   return (
     <aside className="shop">
-      <div className="shopHead"><span>★ 상점 ★</span><span className="shopIcons">⚙️</span></div>
+      <div className="shopHead"><span>🛒 재료 상점</span><span className="shopGold">🪙 {fmt(snap.gold)}</span></div>
       <div className="tabs">
-        {TABS.map((t) => (
-          <button key={t.id} className={'tab' + (t.id === tab ? ' active' : '')} onClick={() => setTab(t.id)}>
-            {t.label}
+        {CATEGORIES.map((c) => (
+          <button key={c.id} className={'tab' + (c.id === tab ? ' active' : '')} onClick={() => setTab(c.id)}>
+            {c.emoji}
           </button>
         ))}
       </div>
 
       <div className="items">
-        {tab === 'friends' && GENS.map((g, i) => {
-          const owned = snap.gens[i];
-          const cost = genCost(i, owned);
-          const can = snap.coins >= cost;
+        {INGREDIENTS.filter((g) => g.cat === tab).map((g) => {
+          const owned = ingredientUnlocked(snap, g);
+          const buyable = ingredientBuyable(snap, g);
+          const levelLocked = snap.level.lvl < g.unlockLevel;
           return (
             <div
-              key={i}
-              className={'item' + (can ? ' afford' : '') + (!can && owned === 0 ? ' locked' : '')}
-              onClick={() => buyGen(i)}
+              key={g.id}
+              className={'item' + (buyable ? ' afford' : '') + (!owned && !buyable ? ' locked' : '') + (owned ? ' owned' : '')}
+              onClick={() => buyIngredient(g.id)}
             >
               <div className="emoji">{g.emoji}</div>
               <div className="body">
-                <div className="name"><span>{g.name}</span><span className="cnt">{owned}</span></div>
-                <div className="desc">{g.desc}</div>
-                <div className={'cost' + (can ? '' : ' no')}>🪙 {fmt(cost)}</div>
+                <div className="name">
+                  <span>{g.name}</span>
+                  <span className="cnt">{owned ? '✓ 보유' : `Lv.${g.unlockLevel}`}</span>
+                </div>
+                <div className="desc">{bonusText(g.bonus)} · {g.adjectives.join('/')}</div>
+                {owned
+                  ? <div className="cost owned">해금 완료</div>
+                  : levelLocked
+                    ? <div className="cost no">Lv.{g.unlockLevel} 필요</div>
+                    : <div className={'cost' + (buyable ? '' : ' no')}>🪙 {fmt(g.price)}</div>}
               </div>
             </div>
           );
         })}
-
-        {tab === 'upgrade' && (() => {
-          const cost = clickUpgradeCost(snap);
-          const can = snap.coins >= cost;
-          return (
-            <div className={'item' + (can ? ' afford' : '')} onClick={buyClickUpgrade}>
-              <div className="emoji">✊</div>
-              <div className="body">
-                <div className="name"><span>클릭 강화</span><span className="cnt">Lv.{snap.clickLevel}</span></div>
-                <div className="desc">클릭당 코인이 +1 늘어나요</div>
-                <div className={'cost' + (can ? '' : ' no')}>🪙 {fmt(cost)}</div>
-              </div>
-            </div>
-          );
-        })()}
-
-        {!['friends', 'upgrade'].includes(tab) && (
-          <div className="placeholder">곧 만나요! 🥟 (준비 중인 기능이에요)</div>
-        )}
       </div>
 
       <div className="stats">
-        총 클릭 <b>{snap.totalClicks}</b> · 누적 코인 <b>{fmt(snap.totalEarned)}</b><br />
-        클릭당 <b>{fmt(snap.clickPower)}</b> 코인 · 초당 <b>{fmt(snap.perSec)}</b>
+        총 찜 <b>{snap.totalSteamed}</b> · 보유 골드 <b>{fmt(snap.gold)}</b><br />
+        보관함 <b>{snap.inventory.length}</b>개 · 클릭당 <b>−{snap.clickPower.toFixed(1)}</b>초
       </div>
     </aside>
   );

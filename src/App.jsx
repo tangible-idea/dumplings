@@ -3,7 +3,9 @@ import { fmt, levelInfo, LEVEL_NAMES, NEWS } from './lib/game';
 import { deviceAuth, deviceCode, deviceRegister, googleLogin, inviteSlug, supabase, updateSlug } from './lib/supabase';
 import { useGame } from './hooks/useGame';
 import { useRealtime } from './hooks/useRealtime';
-import Character from './components/Character';
+import SteamStation from './components/SteamStation';
+import Inventory from './components/Inventory';
+import ResultPopup from './components/ResultPopup';
 import Shop from './components/Shop';
 import FriendBar from './components/FriendBar';
 import Gate from './components/Gate';
@@ -57,13 +59,13 @@ export default function App() {
   const { snap } = game;
 
   const characterRef = useRef(null);
-  const coinsRef = useRef(null);
 
   const [gate, setGate] = useState({ state: 'loading' });
   const [auth, setAuth] = useState({ ready: false, session: null, myId: null, profile: null, friends: [] });
   const [friendSignal, setFriendSignal] = useState(null);
   const [toastData, setToastData] = useState({ msg: '', ts: 0 });
 
+  const [result, setResult] = useState(null);
   const [invite, setInvite] = useState(null);
   const [findFriendsOpen, setFindFriendsOpen] = useState(false);
   const [slugInput, setSlugInput] = useState('');
@@ -184,15 +186,12 @@ export default function App() {
 
   useEffect(() => { boot(); /* eslint-disable-next-line */ }, []);
 
-  // 오프라인 보상
+  // 찜 완성 → 결과 팝업
   useEffect(() => {
-    if (game.offlineReward > 0) {
-      const t = setTimeout(() => toast(`오프라인 보상 +${fmt(game.offlineReward)} 코인`), 600);
-      return () => clearTimeout(t);
-    }
-    return undefined;
+    const jc = snap.justCompleted;
+    if (jc && (!result || result.ts !== jc.ts)) setResult(jc);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [snap.justCompleted]);
 
   // 레벨업 토스트
   useEffect(() => {
@@ -200,17 +199,11 @@ export default function App() {
     prevLevel.current = snap.level.lvl;
   }, [snap.level.lvl, toast]);
 
-  // ---- 클릭 처리 ----
-  const popCoins = () => {
-    const el = coinsRef.current;
-    if (!el) return;
-    el.classList.remove('pop'); void el.offsetWidth; el.classList.add('pop');
-  };
+  // ---- 클릭 처리 (진행 중 찜이 있을 때만 시간 감소) ----
   const handleClick = useCallback(() => {
     if (!readyRef.current) return;
     const power = game.click();
-    characterRef.current?.triggerClick(power);
-    popCoins();
+    if (power > 0) characterRef.current?.triggerClick(power);
   }, [game]);
   handleClickRef.current = handleClick;
 
@@ -233,9 +226,9 @@ export default function App() {
       const S = game.sRef.current;
       try {
         await supabase.from('clicker_game_states').update({
-          total_clicks: Math.round(S.totalClicks),
-          coins: Math.round(S.coins),
-          exp: Math.round(S.totalEarned),
+          total_clicks: Math.round(S.totalSteamed),
+          coins: Math.round(S.gold),
+          exp: Math.round(S.exp),
           level: levelInfo(S).lvl,
         }).eq('owner_id', auth.myId);
       } catch (e) { /* ignore */ }
@@ -255,12 +248,11 @@ export default function App() {
         <News />
         <div className="game">
           <div className="left">
-            <div className="title">🥟 클리커 키우기</div>
+            <div className="title">🥟 딤섬 찜기</div>
             <div className="level">Lv.{li.lvl} {levelName}</div>
             <div className="progress"><div style={{ width: pct + '%' }} /></div>
-            <div className="progressText">Lv.{li.lvl + 1}까지 {fmt(li.need - li.cur)} 코인 ({pct.toFixed(1)}%)</div>
-            <div className="coin"><span className="ic">🪙</span><span className="coins" ref={coinsRef}>{fmt(snap.coins)}</span></div>
-            <div className="persec">초당 {fmt(snap.perSec)} 코인</div>
+            <div className="progressText">Lv.{li.lvl + 1}까지 경험치 {fmt(li.need - li.cur)} ({pct.toFixed(1)}%)</div>
+            <div className="coin"><span className="ic">🪙</span><span className="coins">{fmt(snap.gold)}</span></div>
             <FriendBar
               friends={auth.friends}
               signal={friendSignal}
@@ -290,12 +282,18 @@ export default function App() {
                 <button className="mylink-copy" onClick={copyInviteUrl} title="초대 링크 복사">🔗</button>
               )}
             </div>
-            <Character ref={characterRef} />
-            <div className="combo">🔥 클릭 x{snap.combo.toFixed(1)}</div>
+            <SteamStation ref={characterRef} snap={snap} game={game} onClick={handleClick} />
+            <Inventory snap={snap} game={game} />
           </div>
-          <Shop snap={snap} buyGen={game.buyGen} buyClickUpgrade={game.buyClickUpgrade} />
+          <Shop snap={snap} buyIngredient={game.buyIngredient} />
         </div>
       </div>
+
+      <ResultPopup
+        result={result}
+        onEat={() => { if (result) game.eat(result.id); game.clearJustCompleted(); setResult(null); }}
+        onSell={() => { if (result) game.sell(result.id); game.clearJustCompleted(); setResult(null); }}
+      />
 
       <InviteModal invite={invite} onClose={() => setInvite(null)} />
       <FindFriendsModal
