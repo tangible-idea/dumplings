@@ -1,68 +1,69 @@
 import { useCallback, useEffect, useRef } from 'react';
-import { getMqtt, feedTopic, userIdFromTopic } from '../lib/mqtt';
+import { supabase } from '../lib/supabase';
 
-// MQTT(HiveMQ) 기반 실시간 신호.
-//  - 내 피드(clicker/feed/<myId>)로 click/poke publish
-//  - 친구 피드(clicker/feed/<friendId>) subscribe 해서 click/poke 수신
-// ESP32 기기도 같은 토픽 규약을 공유한다(친구가 콕 찌르면 기기가 하트 표시).
-export function useRealtime({ myId, myName, friends, onSignal }) {
-  const clientRef = useRef(null);
-  const lastClick = useRef(0);
-  const lastPoke = useRef(0);
+const queuePokes = (myId, friends) => {
+  if (!friends.length) return;
+  supabase.from('clicker_pokes').insert(
+    friends.map((f) => ({ from_user: myId, to_user: f.id }))
+  ).then(({ error }) => { if (error) console.warn('[poke queue]', error.message); });
+};
+
+// 내 채널(clicker_feed:<myId>)로 클릭 송신, 친구 채널 구독해서 click/poke 수신.
+export function useRealtime({ session, myId, friends, onSignal }) {
+  const channelRef = useRef(null);
+  const lastBroadcast = useRef(0);
   const onSignalRef = useRef(onSignal);
   onSignalRef.current = onSignal;
-  const friendMap = useRef(new Map());
-  const myNameRef = useRef(myName);
-  myNameRef.current = myName;
+  const friendsRef = useRef(friends);
+  friendsRef.current = friends;
 
   useEffect(() => {
-    friendMap.current = new Map((friends || []).map((f) => [String(f.id), f]));
-  }, [friends]);
+    if (!session || !myId) return undefined;
+    supabase.realtime.setAuth(session.access_token);
 
-  useEffect(() => {
-    if (!myId) return undefined;
-    const client = getMqtt();
-    clientRef.current = client;
+    const mine = supabase.channel(`clicker_feed:${myId}`, {
+      config: { private: true, broadcast: { self: false } },
+    });
+    mine.subscribe();
+    channelRef.current = mine;
 
-    const handler = (topic, payload) => {
-      const f = friendMap.current.get(userIdFromTopic(topic));
-      if (!f) return;
-      let msg = {};
-      try { msg = JSON.parse(payload.toString()); } catch { return; }
-      const type = msg.e === 'poke' ? 'poke' : msg.e === 'click' ? 'click' : null;
-      if (type) onSignalRef.current(f, type);
-    };
-    client.on('message', handler);
-
-    const topics = (friends || []).map((f) => feedTopic(f.id));
-    if (topics.length) client.subscribe(topics, { qos: 0 });
+    const subs = (friends || []).map((f) =>
+      supabase
+        .channel(`clicker_feed:${f.id}`, { config: { private: true } })
+        .on('broadcast', { event: 'click' }, () => onSignalRef.current(f, 'click'))
+        .on('broadcast', { event: 'poke' }, () => onSignalRef.current(f, 'poke'))
+        .subscribe()
+    );
 
     return () => {
-      client.off('message', handler);
-      if (topics.length) client.unsubscribe(topics);
+      supabase.removeChannel(mine);
+      subs.forEach((s) => supabase.removeChannel(s));
+      channelRef.current = null;
     };
-  }, [myId, friends]);
+  }, [session, myId, friends]);
 
-  const publish = useCallback((payload) => {
-    const c = clientRef.current;
-    if (!c || !myId) return;
-    c.publish(feedTopic(myId), JSON.stringify(payload), { qos: 0 });
-  }, [myId]);
+  const lastPoke = useRef(0);
 
   const broadcastClick = useCallback(() => {
+    const ch = channelRef.current;
+    if (!ch) return;
     const now = Date.now();
-    if (now - lastClick.current < 150) return;
-    lastClick.current = now;
-    publish({ e: 'click', t: now });
-  }, [publish]);
+    if (now - lastBroadcast.current < 150) return;
+    lastBroadcast.current = now;
+    ch.send({ type: 'broadcast', event: 'click', payload: { ts: now } });
+  }, []);
 
   const broadcastPoke = useCallback(() => {
+    const ch = channelRef.current;
+    if (!ch) return false;
     const now = Date.now();
     if (now - lastPoke.current < 10000) return false; // 10초 쿨다운
     lastPoke.current = now;
-    publish({ e: 'poke', t: now, n: myNameRef.current || '친구' });
+    ch.send({ type: 'broadcast', event: 'poke', payload: { ts: now } });
+    // ESP32 폴링용 큐에도 기록 (clicker_poke_inbox가 소비)
+    queuePokes(myId, friendsRef.current || []);
     return true;
-  }, [publish]);
+  }, [myId]);
 
   return { broadcastClick, broadcastPoke };
 }
