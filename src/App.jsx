@@ -112,7 +112,7 @@ export default function App() {
   }, [toast]);
 
   const { broadcastClick, broadcastPoke } = useRealtime({
-    session: auth.session, myId: auth.myId, friends: auth.friends, onSignal,
+    myId: auth.myId, myName: auth.profile?.slug || auth.profile?.nickname, friends: auth.friends, onSignal,
   });
 
   // ---- 부팅 / 인증 ----
