@@ -11,6 +11,10 @@ import FriendBar from './components/FriendBar';
 import Gate from './components/Gate';
 import InviteModal from './components/InviteModal';
 import FindFriendsModal from './components/FindFriendsModal';
+import ModeSelect from './components/ModeSelect';
+import BasicClicker from './components/BasicClicker';
+
+const MODE_KEY = 'clicker_mode';
 
 function Stars() {
   const stars = useMemo(
@@ -62,6 +66,10 @@ export default function App() {
 
   const [gate, setGate] = useState({ state: 'loading' });
   const [auth, setAuth] = useState({ ready: false, session: null, myId: null, profile: null, friends: [] });
+  const [mode, setMode] = useState(() => localStorage.getItem(MODE_KEY));
+  const [cloud, setCloud] = useState(null);
+  const pickMode = useCallback((m) => { localStorage.setItem(MODE_KEY, m); setMode(m); }, []);
+  const resetMode = useCallback(() => { localStorage.removeItem(MODE_KEY); setMode(null); }, []);
   const [friendSignal, setFriendSignal] = useState(null);
   const [toastData, setToastData] = useState({ msg: '', ts: 0 });
 
@@ -167,6 +175,7 @@ export default function App() {
     if (res.needsLogin) { setGate({ state: 'login' }); return; }
     if (res.owner === false) { setGate({ state: 'owned' }); return; }
     game.seedFromCloud(res.gameState);
+    setCloud(res.gameState || null);
     const profile = res.profile;
     setSlugInput(profile?.slug || '');
     setAuth({ ready: true, session, myId: session.user.id, profile, friends: res.friends || [] });
@@ -208,6 +217,7 @@ export default function App() {
   handleClickRef.current = handleClick;
 
   useEffect(() => {
+    if (mode !== 'dimsum') return undefined;
     const h = (e) => {
       if (e.repeat || e.metaKey || e.ctrlKey || e.altKey) return;
       const tag = document.activeElement?.tagName;
@@ -217,11 +227,11 @@ export default function App() {
     };
     window.addEventListener('keydown', h);
     return () => window.removeEventListener('keydown', h);
-  }, [handleClick]);
+  }, [handleClick, mode]);
 
-  // ---- 클라우드 세이브 ----
+  // ---- 클라우드 세이브 (딤섬 모드 전용: total_clicks 컬럼 공유) ----
   useEffect(() => {
-    if (!auth.ready || !auth.myId) return undefined;
+    if (mode !== 'dimsum' || !auth.ready || !auth.myId) return undefined;
     const id = setInterval(async () => {
       const S = game.sRef.current;
       try {
@@ -234,11 +244,46 @@ export default function App() {
       } catch (e) { /* ignore */ }
     }, 10000);
     return () => clearInterval(id);
-  }, [auth.ready, auth.myId, game.sRef]);
+  }, [mode, auth.ready, auth.myId, game.sRef]);
 
   const li = snap.level;
   const pct = Math.min(100, (li.cur / li.need) * 100);
   const levelName = LEVEL_NAMES[Math.min(LEVEL_NAMES.length - 1, li.lvl - 1)];
+
+  const socialBlock = (
+    <>
+      <FriendBar
+        friends={auth.friends}
+        signal={friendSignal}
+        onFindFriends={auth.ready ? () => setFindFriendsOpen(true) : undefined}
+      />
+      <div className="mylink">
+        {auth.ready && (
+          slugEditing ? (
+            <span className="mylink-edit">
+              <input
+                className="input"
+                autoFocus
+                value={slugInput}
+                placeholder="my-slug"
+                onChange={(e) => setSlugInput(e.target.value.toLowerCase())}
+                onKeyDown={(e) => { if (e.key === 'Enter') saveSlug(); if (e.key === 'Escape') setSlugEditing(false); }}
+                onBlur={saveSlug}
+                disabled={slugSaving}
+              />
+            </span>
+          ) : (
+            <span className="mylink-slug" onClick={() => setSlugEditing(true)}>
+              {auth.profile?.slug ? `@${auth.profile.slug}` : '슬러그 설정하기 ✏️'}
+            </span>
+          )
+        )}
+        {auth.ready && !slugEditing && (
+          <button className="mylink-copy" onClick={copyInviteUrl} title="초대 링크 복사">🔗</button>
+        )}
+      </div>
+    </>
+  );
 
   return (
     <>
@@ -247,45 +292,42 @@ export default function App() {
       <div className="app">
         <News />
         <div className="game">
-          <div className="left">
-            <div className="title">🥟 딤섬 찜기</div>
-            <div className="level">Lv.{li.lvl} {levelName}</div>
-            <div className="progress"><div style={{ width: pct + '%' }} /></div>
-            <div className="progressText">Lv.{li.lvl + 1}까지 경험치 {fmt(li.need - li.cur)} ({pct.toFixed(1)}%)</div>
-            <div className="coin"><span className="ic">🪙</span><span className="coins">{fmt(snap.gold)}</span></div>
-            <FriendBar
-              friends={auth.friends}
-              signal={friendSignal}
-              onFindFriends={auth.ready ? () => setFindFriendsOpen(true) : undefined}
-            />
-            <div className="mylink">
-              {auth.ready && (
-                slugEditing ? (
-                  <span className="mylink-edit">
-                    <input
-                      autoFocus
-                      value={slugInput}
-                      placeholder="my-slug"
-                      onChange={(e) => setSlugInput(e.target.value.toLowerCase())}
-                      onKeyDown={(e) => { if (e.key === 'Enter') saveSlug(); if (e.key === 'Escape') setSlugEditing(false); }}
-                      onBlur={saveSlug}
-                      disabled={slugSaving}
-                    />
-                  </span>
-                ) : (
-                  <span className="mylink-slug" onClick={() => setSlugEditing(true)}>
-                    {auth.profile?.slug ? `@${auth.profile.slug}` : '슬러그 설정하기 ✏️'}
-                  </span>
-                )
-              )}
-              {auth.ready && !slugEditing && (
-                <button className="mylink-copy" onClick={copyInviteUrl} title="초대 링크 복사">🔗</button>
-              )}
+          {mode === 'basic' ? (
+            <div className="left">
+              <div className="appbar">
+                <div className="title">👆 기본 클리커</div>
+                {auth.ready && <button className="btn btn-ghost btn-sm" onClick={resetMode}>모드 변경</button>}
+              </div>
+              {socialBlock}
+              <BasicClicker
+                myId={auth.myId}
+                ready={auth.ready}
+                profile={auth.profile}
+                friends={auth.friends}
+                initialClicks={cloud?.total_clicks || 0}
+                toast={toast}
+              />
             </div>
-            <SteamStation ref={characterRef} snap={snap} game={game} onClick={handleClick} />
-            <Inventory snap={snap} game={game} />
-          </div>
-          <Shop snap={snap} buyIngredient={game.buyIngredient} />
+          ) : (
+            <>
+              <div className="left">
+                <div className="appbar">
+                  <div>
+                    <div className="title">🥟 딤섬 찜기</div>
+                    <div className="level">Lv.{li.lvl} {levelName}</div>
+                  </div>
+                  {auth.ready && <button className="btn btn-ghost btn-sm" onClick={resetMode}>모드 변경</button>}
+                </div>
+                <div className="progress"><div style={{ width: pct + '%' }} /></div>
+                <div className="progressText">Lv.{li.lvl + 1}까지 경험치 {fmt(li.need - li.cur)} ({pct.toFixed(1)}%)</div>
+                <div className="coin"><span className="ic">🪙</span><span className="coins">{fmt(snap.gold)}</span></div>
+                {socialBlock}
+                <SteamStation ref={characterRef} snap={snap} game={game} onClick={handleClick} />
+                <Inventory snap={snap} game={game} />
+              </div>
+              <Shop snap={snap} buyIngredient={game.buyIngredient} />
+            </>
+          )}
         </div>
       </div>
 
@@ -301,6 +343,8 @@ export default function App() {
         onClose={() => setFindFriendsOpen(false)}
         onAdded={(user) => setAuth((a) => ({ ...a, friends: [...a.friends.filter((f) => f.id !== user.id), user] }))}
       />
+
+      {!gate && auth.ready && !mode && <ModeSelect onSelect={pickMode} />}
 
       {gate && (
         <Gate
