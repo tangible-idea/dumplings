@@ -238,6 +238,21 @@ body {
   padding: 12px; border-radius: var(--radius); margin: 12px 0;
 }
 .warn { color: hsl(var(--destructive) / .9); font-size: 12px; margin-top: 14px; }
+
+/* WiFi 설정 안내 단계 */
+.card .steps {
+  text-align: left; margin: 4px 0 18px; padding-left: 22px;
+  color: hsl(var(--muted-foreground)); font-size: 13.5px; line-height: 1.55;
+}
+.card .steps li { margin: 10px 0; }
+.card .steps b { color: hsl(var(--foreground)); }
+.card .steps .dim { color: hsl(var(--muted-foreground) / .75); font-size: 12px; }
+.card .steps .ap, .card .steps .code {
+  font-family: ui-monospace, Menlo, monospace; background: hsl(var(--background));
+  border: 1px solid hsl(var(--border)); border-radius: 6px; padding: 1px 6px;
+}
+.card .steps .ap { color: hsl(var(--primary)); }
+.card .steps .code { color: hsl(var(--gold)); }
 .spinner { width: 32px; height: 32px; border: 2.5px solid hsl(var(--secondary)); border-top-color: hsl(var(--primary)); border-radius: 50%; animation: spin 1s linear infinite; margin: 16px auto; }
 @keyframes spin { to { transform: rotate(360deg); } }
 

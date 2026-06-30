@@ -169,7 +169,9 @@ export default function App() {
       return;
     }
     if (res.registered === false) {
-      if (session) { register(); return; }
+      // 로그인됨 + 미등록 → WiFi 설정 안내 (CTA에서 등록 진행)
+      if (session) { setGate({ state: 'wifi' }); return; }
+      // 비로그인 → 먼저 구글 로그인
       setGate({ state: 'register' }); return;
     }
     if (res.needsLogin) { setGate({ state: 'login' }); return; }
@@ -352,6 +354,7 @@ export default function App() {
           deviceCode={deviceCode}
           onGoogle={googleLogin}
           onStart={boot}
+          onRegister={register}
           onRetry={boot}
           onDemo={() => { setAuth((a) => ({ ...a, ready: true })); setGate(null); }}
           onLogout={async () => { await supabase.auth.signOut(); googleLogin(); }}
