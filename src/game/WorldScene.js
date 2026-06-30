@@ -9,8 +9,9 @@ import { DISH_TYPES, ASSET } from '../lib/shop';
 //   * presence: 입장/퇴장 + 최신 좌표 스냅샷(신규 입장자가 기존 위치를 받도록)
 //   * broadcast 'move': 클릭 목표 좌표를 전파 → 수신측에서 동일하게 tween
 
-const WORLD_W = 1600;
-const WORLD_H = 1200;
+// 월드 크기는 Tiled 맵(desert.json: 40x40 타일 * 32px = 1280)에서 결정된다.
+let WORLD_W = 1280;
+let WORLD_H = 1280;
 const SPEED = 260; // px/s
 const SPRITE = 60; // 캐릭터 표시 크기(px)
 const ROOM = 'space:lobby';
@@ -25,6 +26,9 @@ export default class WorldScene extends Phaser.Scene {
   }
 
   preload() {
+    // Tiled 샘플 맵(desert) — 맵 JSON + 타일셋 이미지
+    this.load.tilemapTiledJSON('desert', '/assets/tilemaps/desert.json');
+    this.load.image('desert-tiles', '/assets/tilemaps/tmw_desert_spacing.png');
     // 모든 딤섬 텍스처를 파일명 키로 로드(플레이어별 캐릭터 선택용).
     DISH_TYPES.forEach((d) => this.load.image(d.asset, ASSET(d.asset)));
   }
@@ -36,9 +40,9 @@ export default class WorldScene extends Phaser.Scene {
     const myClicks = reg.clicks || 0;
     const mySlug = reg.slug || 'guest';
 
+    this.buildMap();
     this.cameras.main.setBounds(0, 0, WORLD_W, WORLD_H);
     this.physics.world.setBounds(0, 0, WORLD_W, WORLD_H);
-    this.drawFloor();
 
     // 내 캐릭터
     const start = { x: Phaser.Math.Between(200, WORLD_W - 200), y: Phaser.Math.Between(200, WORLD_H - 200) };
@@ -62,13 +66,14 @@ export default class WorldScene extends Phaser.Scene {
   }
 
   // ---- 시각 요소 ----
-  drawFloor() {
-    const g = this.add.graphics();
-    g.fillStyle(0x16161a, 1).fillRect(0, 0, WORLD_W, WORLD_H);
-    g.lineStyle(1, 0x2a2a33, 1);
-    for (let x = 0; x <= WORLD_W; x += 64) g.lineBetween(x, 0, x, WORLD_H);
-    for (let y = 0; y <= WORLD_H; y += 64) g.lineBetween(0, y, WORLD_W, y);
-    g.setDepth(-10);
+  buildMap() {
+    const map = this.make.tilemap({ key: 'desert' });
+    // 타일셋 이름('Desert')은 desert.json 의 tileset name 과 일치해야 한다.
+    const tiles = map.addTilesetImage('Desert', 'desert-tiles');
+    const layer = map.createLayer('Ground', tiles, 0, 0);
+    layer.setDepth(-10);
+    WORLD_W = map.widthInPixels;
+    WORLD_H = map.heightInPixels;
   }
 
   makeAvatar(x, y, asset, clicks, slug, isMe) {
