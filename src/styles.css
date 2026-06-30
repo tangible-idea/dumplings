@@ -426,3 +426,100 @@ body {
   .shop { flex: 1 1 auto; max-width: none; border-left: none; border-top: 1px solid hsl(var(--border)); }
   .stage { min-height: 180px; }
 }
+
+/* ============================================================
+   딤섬 가게 운영 게임 (모바일 전용)
+   ============================================================ */
+.shopgame {
+  position: relative; z-index: 1; max-width: 480px; margin: 0 auto;
+  height: 100%; display: flex; flex-direction: column; gap: 10px;
+  padding: 14px 14px 18px; box-sizing: border-box;
+}
+.shopbar { display: flex; align-items: flex-start; justify-content: space-between; }
+.shopbar .coin { margin-top: 0; font-size: 24px; }
+.shopbar .coin .ic { font-size: .9em; }
+
+/* 딤섬 종류 선택 */
+.dishpicker { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 4px; -webkit-overflow-scrolling: touch; }
+.dishchip {
+  flex: 0 0 auto; width: 70px; display: flex; flex-direction: column; align-items: center; gap: 4px;
+  padding: 8px 6px; border-radius: var(--radius); cursor: pointer;
+  background: hsl(var(--card)); border: 1px solid hsl(var(--border)); color: hsl(var(--muted-foreground));
+  font-size: 11px; transition: border-color .15s, transform .05s;
+}
+.dishchip img { width: 44px; height: 44px; object-fit: contain; }
+.dishchip.sel { border-color: hsl(var(--primary)); color: hsl(var(--foreground)); box-shadow: 0 0 0 1px hsl(var(--primary)); }
+.dishchip.locked { opacity: .5; filter: grayscale(.7); }
+.dishchip:active { transform: translateY(.5px); }
+
+/* 무대: 세로 목표바 + 찜기 */
+.gstage { display: flex; gap: 16px; align-items: stretch; justify-content: center; padding: 6px 0; }
+.steamer-wrap { display: flex; flex-direction: column; align-items: center; justify-content: flex-end; gap: 8px; flex: 1 1 auto; }
+.steamer {
+  position: relative; background: none; border: 0; padding: 0; cursor: pointer;
+  width: min(180px, 50vw); aspect-ratio: 1; display: grid; place-items: center;
+}
+.steamer:disabled { cursor: default; }
+.steamer-img { width: 100%; height: 100%; object-fit: contain; -webkit-user-drag: none; user-select: none; transition: transform .2s; }
+.steamer.on .steamer-img { transform: scale(1.04); animation: steamerBob .9s ease-in-out infinite; }
+@keyframes steamerBob { 50% { transform: scale(1.06) translateY(-2px); } }
+
+.steam-puffs { position: absolute; top: -6px; left: 0; right: 0; height: 60px; pointer-events: none; }
+.puff {
+  position: absolute; bottom: 0; left: 50%; width: 14px; height: 14px; border-radius: 50%;
+  background: rgba(255,255,255,.5); filter: blur(2px); animation: puff 1.5s ease-out infinite;
+}
+.puff:nth-child(2){left:38%}.puff:nth-child(3){left:62%}.puff:nth-child(4){left:30%}.puff:nth-child(5){left:70%}
+@keyframes puff { 0% { transform: translateY(0) scale(.6); opacity: 0; } 30% { opacity: .8; } 100% { transform: translateY(-46px) scale(1.4); opacity: 0; } }
+
+.stage-info { text-align: center; }
+.countdown { font-size: 40px; font-weight: 800; color: hsl(var(--primary)); line-height: 1; letter-spacing: -.02em; }
+.clicks { font-size: 12px; color: hsl(var(--muted-foreground)); margin-top: 4px; }
+.hint-big { font-size: 15px; font-weight: 700; color: hsl(var(--foreground)); }
+.hint-sub { font-size: 12px; color: hsl(var(--muted-foreground)); margin-top: 3px; }
+
+/* 세로 목표 프로그레스바 */
+.goalbar { display: flex; align-items: stretch; }
+.goalbar-track {
+  position: relative; width: 52px; border-radius: 12px; overflow: hidden;
+  border: 1px solid hsl(var(--border)); background: hsl(var(--background));
+  display: flex; flex-direction: column;
+}
+.goalbar-zone { width: 100%; opacity: .32; }
+.goalbar-fill {
+  position: absolute; left: 0; right: 0; bottom: 0;
+  background: linear-gradient(to top, rgba(255,255,255,.55), rgba(255,255,255,.15));
+  transition: height .12s ease-out;
+}
+.goalbar-marker { position: absolute; left: -2px; right: -2px; height: 0; transition: bottom .12s ease-out; }
+.goalbar-marker::before { content: ''; position: absolute; left: 0; right: 0; top: -1.5px; height: 3px; background: hsl(var(--foreground)); }
+.goalbar-marker.frozen::before { background: hsl(var(--primary)); height: 4px; top: -2px; }
+.goalbar-pct {
+  position: absolute; right: 100%; margin-right: 6px; top: -9px; font-size: 11px; font-weight: 700;
+  color: hsl(var(--foreground)); background: hsl(var(--card)); border: 1px solid hsl(var(--border));
+  border-radius: 6px; padding: 1px 5px; white-space: nowrap;
+}
+
+/* 키친 / 서빙 */
+.kitchen-serving { display: flex; flex-direction: column; gap: 10px; flex: 1 1 auto; min-height: 0; overflow-y: auto; }
+.panel { background: hsl(var(--card)); border: 1px solid hsl(var(--border)); border-radius: var(--radius); padding: 10px 12px; }
+.serving-panel { border-style: dashed; }
+.panel-title { font-size: 13px; font-weight: 700; color: hsl(var(--foreground)); margin-bottom: 8px; }
+.panel-title .muted { color: hsl(var(--muted-foreground)); font-weight: 500; margin-left: 4px; }
+.kgrid { display: flex; flex-wrap: wrap; gap: 8px; }
+.empty { font-size: 12px; color: hsl(var(--muted-foreground)); padding: 8px 2px; }
+.kdish, .sdish { width: 72px; display: flex; flex-direction: column; align-items: center; gap: 3px; }
+.kdish-grab { background: none; border: 0; padding: 0; cursor: grab; touch-action: none; }
+.kdish-grab img, .sdish img { width: 56px; height: 56px; object-fit: contain; -webkit-user-drag: none; user-select: none; }
+.kdish-meta { font-size: 11px; color: hsl(var(--muted-foreground)); }
+.kdish-serve {
+  font-size: 11px; padding: 2px 8px; border-radius: 999px; cursor: pointer;
+  background: hsl(var(--secondary)); color: hsl(var(--foreground)); border: 1px solid hsl(var(--border));
+}
+.sdish img { animation: servingIdle 2.4s ease-in-out infinite; }
+@keyframes servingIdle { 50% { transform: translateY(-3px); } }
+
+/* 결과 팝업 */
+.result-card { text-align: center; }
+.result-dish { width: 96px; height: 96px; object-fit: contain; margin: 0 auto 6px; }
+.result-price { font-size: 18px; font-weight: 800; color: hsl(var(--gold)); margin: 10px 0 16px; }

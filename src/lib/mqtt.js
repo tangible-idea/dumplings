@@ -9,8 +9,18 @@ const PASSWORD = import.meta.env.VITE_MQTT_PASSWORD || '6cCB5q72upQi@qK';
 // 유저별 피드 토픽: 본인이 publish, 친구들이 subscribe.
 export const feedTopic = (userId) => `clicker/feed/${userId}`;
 
+// 제어 토픽: 웹이 publish, 내 ESP32가 subscribe (게임 시작 등).
+export const ctrlTopic = (userId) => `clicker/ctrl/${userId}`;
+
 // 토픽 끝의 userId 추출.
 export const userIdFromTopic = (topic) => topic.slice(topic.lastIndexOf('/') + 1);
+
+// 객체를 JSON으로 publish (qos 0).
+export function publish(topic, obj) {
+  const client = getMqtt();
+  const payload = typeof obj === 'string' ? obj : JSON.stringify(obj);
+  client.publish(topic, payload, { qos: 0 });
+}
 
 let client = null;
 
