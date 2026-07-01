@@ -1,13 +1,15 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { deviceAuth, deviceCode, deviceRegister, googleLogin, supabase } from './lib/supabase';
-import { fmt, levelInfo, LEVEL_NAMES, unlockedDishes } from './lib/shop';
-import { useShopGame } from './hooks/useShopGame';
 import { useRealtime } from './hooks/useRealtime';
 import Gate from './components/Gate';
-import DishPicker from './components/DishPicker';
-import SteamerStage from './components/SteamerStage';
-import ShopResultPopup from './components/ShopResultPopup';
-import KitchenServing from './components/KitchenServing';
+
+const fmt = (n) => (n || 0).toLocaleString('en-US');
+const todayKey = () => new Date().toISOString().slice(0, 10);
+const QUEST_GOAL = 500;
+
+// 글로벌 랭킹은 game_states RLS(본인+친구 한정)로 클라 계산 불가 → RPC 붙기 전까지 플레이스홀더.
+const RANK_LABEL = '#24 · 상위 8%';
+const initial = (name) => ([...(name || '?')][0] || '?').toUpperCase();
 
 function Toast({ data }) {
   const [show, setShow] = useState(false);
@@ -20,35 +22,112 @@ function Toast({ data }) {
   return <div className={'toast' + (show ? ' show' : '')}>{data.msg}</div>;
 }
 
+// 아이콘(디자인의 SVG 그대로) ------------------------------------------------
+const IconTarget = (p) => (
+  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" {...p}>
+    <circle cx="12" cy="12" r="3.2" /><circle cx="12" cy="12" r="7.2" strokeDasharray="1.6 2.6" />
+  </svg>
+);
+const IconTrophy = (p) => (
+  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" {...p}>
+    <path d="M8 4h8v4a4 4 0 0 1-8 0V4Z" /><path d="M8 5H5v1.5a3 3 0 0 0 3 3" /><path d="M16 5h3v1.5a3 3 0 0 1-3 3" />
+    <path d="M12 12v4" /><path d="M9.5 19.5h5" /><path d="M11 16h2v3.5h-2z" />
+  </svg>
+);
+const IconQuest = () => (
+  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6">
+    <circle cx="12" cy="12" r="8" /><circle cx="12" cy="12" r="3.4" />
+  </svg>
+);
+const IconChevron = () => (
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#C9C5B8" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" style={{ flex: '0 0 auto' }}>
+    <path d="M9 6l6 6-6 6" />
+  </svg>
+);
+
 export default function App() {
   const [gate, setGate] = useState({ state: 'loading' });
-  const [auth, setAuth] = useState({ ready: false, session: null, myId: null, profile: null, coins: 0, exp: 0 });
+  const [auth, setAuth] = useState({ ready: false, session: null, myId: null, profile: null });
   const [toastData, setToastData] = useState({ msg: '', ts: 0 });
   const toast = useCallback((msg) => setToastData({ msg, ts: Date.now() }), []);
 
-  const level = levelInfo(auth.exp).lvl;
+  // 누적 탭(=총 카운트) / 오늘·최고·연속(로컬 저장)
+  const [total, setTotal] = useState(0);
+  const [today, setToday] = useState(0);
+  const [best, setBest] = useState(0);
+  const [streak, setStreak] = useState(0);
+  const [bump, setBump] = useState(0);          // 숫자 pop 애니메이션 트리거
+  const [delta24, setDelta24] = useState(0);     // 지난 24시간 증가분(세션 근사)
+  const [friends, setFriends] = useState([]);    // [{ id, name, score }] — 실제 친구
 
-  // ---- 딤섬(키친/서빙) ----
-  const [kitchen, setKitchen] = useState([]);
-  const [serving, setServing] = useState([]);
+  const localRef = useRef(null);                 // 로컬 통계 스냅샷
+  const flushTimer = useRef(null);
 
-  // ---- 선택된 딤섬 종류 + 게임 ----
-  const [selected, setSelected] = useState(null);
-  const game = useShopGame({ myId: auth.myId, level });
+  // ---- 로컬 통계 로드/증가 ----------------------------------------------
+  const localLoad = useCallback((myId) => {
+    let s = { date: todayKey(), today: 0, best: 0, streak: 0, lastActive: null };
+    try {
+      const raw = localStorage.getItem('tc:' + myId);
+      if (raw) s = { ...s, ...JSON.parse(raw) };
+    } catch { /* ignore */ }
+    if (s.date !== todayKey()) { s.date = todayKey(); s.today = 0; } // 날짜 바뀌면 오늘 리셋
+    localRef.current = s;
+    setToday(s.today); setBest(s.best); setStreak(s.streak);
+  }, []);
 
-  // 해금된 종류 중 첫번째를 기본 선택
-  useEffect(() => {
-    if (!selected) {
-      const u = unlockedDishes(level);
-      if (u.length) setSelected(u[0].id);
+  const localTick = useCallback((myId) => {
+    const s = localRef.current || { date: todayKey(), today: 0, best: 0, streak: 0, lastActive: null };
+    const tk = todayKey();
+    if (s.date !== tk) { s.date = tk; s.today = 0; }
+    // 연속: 오늘 첫 활동일 때 어제 활동했으면 +1, 아니면 1
+    if (s.lastActive !== tk) {
+      const y = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
+      s.streak = s.lastActive === y ? (s.streak || 0) + 1 : 1;
+      s.lastActive = tk;
     }
-  }, [level, selected]);
+    s.today += 1;
+    if (s.today > s.best) s.best = s.today;
+    localRef.current = s;
+    try { localStorage.setItem('tc:' + myId, JSON.stringify(s)); } catch { /* ignore */ }
+    setToday(s.today); setBest(s.best); setStreak(s.streak);
+  }, []);
 
-  // 내 ESP32 기기 클릭 → 게임 게이지
-  const onDeviceSignal = useCallback(() => { game.onDeviceClick(); }, [game]);
+  // ---- 총 카운트 supabase 반영(디바운스) --------------------------------
+  const scheduleFlush = useCallback((myId, value) => {
+    if (flushTimer.current) clearTimeout(flushTimer.current);
+    flushTimer.current = setTimeout(() => {
+      supabase.from('clicker_game_states').update({ coins: value }).eq('owner_id', myId)
+        .then(({ error }) => { if (error) console.warn('[count]', error.message); });
+    }, 800);
+  }, []);
+
+  // ---- 한 번의 탭(디바이스/화면 공통) ------------------------------------
+  const tap = useCallback(() => {
+    if (!auth.myId) return;
+    setTotal((t) => { const nv = t + 1; scheduleFlush(auth.myId, nv); return nv; });
+    setDelta24((d) => d + 1);
+    localTick(auth.myId);
+    setBump((b) => b + 1);
+  }, [auth.myId, scheduleFlush, localTick]);
+
+  // ---- 친구 점수 로드(친구 game_state 읽기는 RLS 허용) --------------------
+  const loadFriends = useCallback(async (rawFriends) => {
+    const list = (rawFriends || []).map((f) => ({ id: f.id, name: f.nickname || '친구', score: 0 }));
+    if (!list.length) { setFriends([]); return; }
+    const { data, error } = await supabase
+      .from('clicker_game_states')
+      .select('owner_id, coins')
+      .in('owner_id', list.map((f) => f.id));
+    if (error) { console.warn('[friends]', error.message); }
+    else { const m = new Map((data || []).map((r) => [r.owner_id, r.coins || 0])); list.forEach((f) => { f.score = m.get(f.id) || 0; }); }
+    setFriends(list);
+  }, []);
+
+  // 내 ESP32 기기 신호 → 탭
+  const onDeviceSignal = useCallback(() => { tap(); }, [tap]);
   useRealtime({ myId: auth.myId, friends: [], onSignal: () => {}, onDeviceSignal });
 
-  // ---- 부팅 / 인증 ----
+  // ---- 부팅 / 인증 -------------------------------------------------------
   const fnError = useCallback(async (error, data, fallback) => {
     const str = (v) => (v && typeof v === 'object' ? JSON.stringify(v) : String(v ?? ''));
     if (data?.error) { console.error('[gate]', data.error); return str(data.error); }
@@ -67,18 +146,6 @@ export default function App() {
     bootRef.current?.();
   }, [fnError]);
 
-  const loadDishes = useCallback(async (myId) => {
-    const { data, error } = await supabase
-      .from('clicker_dishes')
-      .select('*')
-      .eq('owner_id', myId)
-      .in('status', ['kitchen', 'serving'])
-      .order('created_at', { ascending: true });
-    if (error) { console.warn('[dishes]', error.message); return; }
-    setKitchen((data || []).filter((d) => d.status === 'kitchen'));
-    setServing((data || []).filter((d) => d.status === 'serving'));
-  }, []);
-
   const boot = useCallback(async () => {
     if (!deviceCode) { setGate({ state: 'nocode' }); return; }
     setGate({ state: 'loading' });
@@ -94,101 +161,95 @@ export default function App() {
     if (res.owner === false) { setGate({ state: 'owned' }); return; }
 
     const gs = res.gameState || {};
-    setAuth({ ready: true, session, myId: session.user.id, profile: res.profile, coins: gs.coins || 0, exp: gs.exp || 0 });
+    setTotal(gs.coins || 0);
+    localLoad(session.user.id);
+    setAuth({ ready: true, session, myId: session.user.id, profile: res.profile });
     setGate(null);
-    await loadDishes(session.user.id);
-    toast(`${res.profile?.nickname || '사장님'}, 어서오세요! 🥟`);
-  }, [fnError, loadDishes, toast]);
+    loadFriends(res.friends);
+    toast(`${res.profile?.nickname || '반가워요'}, 탭을 시작하세요!`);
+  }, [fnError, localLoad, loadFriends, toast]);
   bootRef.current = boot;
 
   useEffect(() => { boot(); /* eslint-disable-next-line */ }, []);
 
-  // ---- 딤섬 판매 Realtime (cron이 status=sold 로 바꾸면 골드 반영) ----
+  // 이탈 시 마지막 값 저장
   useEffect(() => {
-    if (!auth.myId) return undefined;
-    const ch = supabase
-      .channel('dishes-' + auth.myId)
-      .on('postgres_changes',
-        { event: 'UPDATE', schema: 'public', table: 'clicker_dishes', filter: `owner_id=eq.${auth.myId}` },
-        (payload) => {
-          const row = payload.new;
-          if (row.status === 'sold') {
-            setServing((s) => s.filter((d) => d.id !== row.id));
-            setKitchen((k) => k.filter((d) => d.id !== row.id));
-            setAuth((a) => ({ ...a, coins: a.coins + (row.price || 0) }));
-            toast(`손님이 ${row.asset ? '딤섬' : '딤섬'}을 샀어요! +🪙${fmt(row.price || 0)}`);
-          }
-        })
-      .subscribe();
-    return () => { supabase.removeChannel(ch); };
-  }, [auth.myId, toast]);
+    const flush = () => {
+      if (!auth.myId) return;
+      if (flushTimer.current) clearTimeout(flushTimer.current);
+      supabase.from('clicker_game_states').update({ coins: total }).eq('owner_id', auth.myId);
+    };
+    window.addEventListener('pagehide', flush);
+    return () => window.removeEventListener('pagehide', flush);
+  }, [auth.myId, total]);
 
-  // ---- 라운드 결과 닫기 → 키친에 딤섬 추가 + 경험치 ----
-  const commitResult = useCallback(async () => {
-    const r = game.result;
-    game.reset();
-    if (!r || !auth.myId) return;
-    // 경험치 적립
-    const newExp = auth.exp + r.exp;
-    setAuth((a) => ({ ...a, exp: newExp }));
-    supabase.from('clicker_game_states')
-      .update({ exp: newExp, level: levelInfo(newExp).lvl })
-      .eq('owner_id', auth.myId).then(({ error }) => { if (error) console.warn('[exp]', error.message); });
-    // 딤섬 생성(키친)
-    const { data, error } = await supabase.from('clicker_dishes')
-      .insert({ owner_id: auth.myId, type_id: r.typeId, asset: r.asset, quality: r.quality, clicks: r.clicks, price: r.price, status: 'kitchen' })
-      .select('*').single();
-    if (error) { console.warn('[dish insert]', error.message); toast('딤섬 저장 실패'); return; }
-    setKitchen((k) => [...k, data]);
-  }, [game, auth.myId, auth.exp, toast]);
-
-  // ---- 키친 → 서빙 ----
-  const serveDish = useCallback(async (dishId) => {
-    const dish = kitchen.find((d) => d.id === dishId);
-    if (!dish) return;
-    setKitchen((k) => k.filter((d) => d.id !== dishId));
-    setServing((s) => [...s, { ...dish, status: 'serving' }]);
-    const { error } = await supabase.from('clicker_dishes')
-      .update({ status: 'serving', served_at: new Date().toISOString() }).eq('id', dishId);
-    if (error) { console.warn('[serve]', error.message); toast('서빙 실패'); loadDishes(auth.myId); }
-  }, [kitchen, auth.myId, loadDishes, toast]);
-
-  const li = levelInfo(auth.exp);
-  const pct = Math.min(100, (li.cur / li.need) * 100);
-  const levelName = LEVEL_NAMES[Math.min(LEVEL_NAMES.length - 1, li.lvl - 1)];
+  const questPct = Math.min(100, Math.round((today / QUEST_GOAL) * 100));
 
   return (
     <>
       <Toast data={toastData} />
+
       {!gate && auth.ready && (
-        <div className="shopgame">
-          <header className="shopbar">
-            <div>
-              <div className="title">🥟 {auth.profile?.nickname || '딤섬'} 가게</div>
-              <div className="level">Lv.{li.lvl} {levelName}</div>
+        <div className="tc">
+          {/* 상단 바 */}
+          <div className="tc-top">
+            <div className="tc-icon"><IconTarget /></div>
+            <div className="tc-brand">COUNTER</div>
+            <div className="tc-icon"><IconTrophy /></div>
+          </div>
+
+          {/* 중앙: 랭킹 / 숫자 / 퀘스트 */}
+          <div className="tc-mid">
+            <div className="tc-rank">
+              <span>글로벌 랭킹</span><span className="v">{RANK_LABEL}</span>
             </div>
-            <div className="coin"><span className="ic">🪙</span><span className="coins">{fmt(auth.coins)}</span></div>
-          </header>
 
-          <div className="progress"><div style={{ width: pct + '%' }} /></div>
+            <button className="tc-tap" onClick={tap} aria-label="탭">
+              <div key={bump} className="tc-number pop">{fmt(total)}</div>
+              <div className="tc-delta">+{fmt(delta24)} · 지난 24시간</div>
+            </button>
 
-          <DishPicker level={li.lvl} selected={selected} onSelect={setSelected} disabled={game.phase === 'steaming'} />
+            <div className="tc-quest">
+              <div className="tc-quest-ic"><IconQuest /></div>
+              <div className="tc-quest-body">
+                <div className="tc-quest-head">
+                  <span className="t">오늘의 퀘스트 · {QUEST_GOAL}회 탭</span>
+                  <span className="n">{today}/{QUEST_GOAL}</span>
+                </div>
+                <div className="tc-quest-bar"><div style={{ width: questPct + '%' }} /></div>
+              </div>
+              <IconChevron />
+            </div>
+          </div>
 
-          <SteamerStage
-            phase={game.phase}
-            pct={game.pct}
-            remaining={game.remaining}
-            dishType={game.dishType}
-            clicks={game.clicks}
-            canStart={!!selected}
-            onStart={() => game.start(selected)}
-          />
+          {/* 친구 — 나 + 실제 친구를 점수순 정렬해 상위 5명 표시 */}
+          <div className="tc-friends">
+            <div className="tc-friends-head">
+              <span>친구</span><span className="all">전체 ›</span>
+            </div>
+            <div className="tc-friends-row">
+              {[{ id: 'me', name: '나', score: total, me: true }, ...friends]
+                .sort((a, b) => b.score - a.score)
+                .slice(0, 5)
+                .map((f) => (
+                  <div className="tc-friend" key={f.id}>
+                    <div className={'av' + (f.me ? ' me' : '')}>{f.me ? '나' : initial(f.name)}</div>
+                    <div className={'sc' + (f.me ? ' me' : '')}>{fmt(f.score)}</div>
+                  </div>
+                ))}
+            </div>
+          </div>
 
-          <KitchenServing kitchen={kitchen} serving={serving} onServe={serveDish} />
+          {/* 하단 통계 */}
+          <div className="tc-stats">
+            <div className="tc-stat"><div className="v">{fmt(today)}</div><div className="l">오늘</div></div>
+            <div className="tc-stat-div" />
+            <div className="tc-stat"><div className="v">{fmt(best)}</div><div className="l">최고</div></div>
+            <div className="tc-stat-div" />
+            <div className="tc-stat"><div className="v">{streak}일</div><div className="l">연속</div></div>
+          </div>
         </div>
       )}
-
-      <ShopResultPopup result={game.phase === 'result' ? game.result : null} onClose={commitResult} />
 
       {gate && (
         <Gate
